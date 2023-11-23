@@ -1,0 +1,13 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+Data/*
+Plots/*
+Tables/*
+Rdata/*
+Reports/*.html
+Reports/*.docx
+Reports/*.pdf
+Reports/*.log
+Reports/kk.bib
