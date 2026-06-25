@@ -105,5 +105,100 @@ $$
 
 $g_{sw,max}$ is an available trait for many species (or at least it seems more straightforward to obtain than obtaining empirical photosynthesis data to calibrate Ball's equation), and we can assume $g_0 = g_{sw, night}$ is a constant fraction of $g_{sw, max}$ (e.g. 5%). Note that Resco de Dios et al. [-@resco_de_dios_assessing_2019] found that $G_{s, night}$ was correlated with growth rate, as are $G_{s, max}$ and $V_{cmax}$, which would support the use of a constant fraction. Finally, $A_{n,max}$ can be estimated assuming $g_{sw} = g_{sw, max}$, at $T_{leaf} = 25\,ºC$, $c_{s} = 386\,ppm$ and saturated light conditions using Farqhuar's model. Using this approach we would have that given $V_{cmax}$, $J_{max}$ and $g_{sw,max}$, the linear relationship between $g_{sw, ft}$ and $A_{n}/c_s$ would be determined. 
 
+### Parameter estimation from gas exchange data
+
+We took the data sets used in @sabot_one_2022.
+
+
+
+
+```{r, include=FALSE}
+library(ggplot2)
+library(readr)
+df_res <- read_delim("../data/gs_model_fit.csv",  delim = ";", locale = locale(decimal_mark = ","), escape_double = FALSE, trim_ws = TRUE, show_col_types = FALSE) 
+```
+
+```{r, echo=FALSE}
+knitr::kable(df_res[,c("Site","Species_accepted","n","Pleaf_min","Pleaf_max","gs_max")], caption = "Sites and species")
+```
+
+
+ + $g0$ was constrained between 0 and 10% of maximum (95% quantile) stomatal conductance
+ + $g1$ was constrained between 0 and 20 units.
+ + $\Psi_{50,gs}$ was constrained between minimum and maximum observed leaf water potentials
+ + $slope_{gs}$ was constrained between zero and 100 %/MPa.
+
+
+```{r, echo=FALSE}
+df_res_valid <- df_res #|>
+ # dplyr::filter(valid)
+```
+
+```{r, echo=FALSE}
+knitr::kable(df_res_valid[,c("Site","Species_accepted", "mae", "g0", "g1", "gs_P50", "gs_slope")], caption = "Error function and fitted parameters for accepted models")
+```
+
+```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
+ggplot(df_res_valid)+
+  geom_point(aes(y = Ptlp, x = gs_P50), size = 2, alpha = 0.6, col = "red", fill = "red") +
+  geom_pointrange(aes(y = Ptlp, x = gs_P50, xmin = Pleaf_min, xmax = Pleaf_max), alpha = 0.6, col = "red", fill = "red") +
+  geom_text(aes(y = Ptlp, x = gs_P50, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+
+  scale_x_continuous(limits = c(-8,0))+
+  scale_y_continuous(limits = c(-8,0))+
+  geom_abline(intercept = 0, slope=1, col = "gray")+
+  xlab("Water potential at 50% stomatal conductance (MPa)")+
+  ylab("Water potential at turgor loss point (MPa)")+
+  theme_bw()
+```
+
+```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
+ggplot(df_res_valid)+
+  geom_point(aes(y = Nleaf, x = g1), size = 2, alpha = 0.6, col = "red", fill = "red") +
+  geom_text(aes(y = Nleaf, x = g1, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+
+  geom_abline(intercept = 0, slope=1, col = "gray")+
+  xlab("Slope of the stomatal response to An/Cs (g1)")+
+  ylab("Leaf nitrogen")+
+  theme_bw()
+```
+
+```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
+
+ggplot(df_res_valid)+
+  # geom_point(aes(x = gs_P50, y = gs_slope), size = 2, alpha = 0.6, col = "red", fill = "red") +
+  geom_pointrange(aes(x = gs_P50, y = gs_slope, xmin = Pleaf_min, xmax = Pleaf_max), alpha = 0.6, col = "red", fill = "red") +
+  geom_text(aes(x = gs_P50, y = gs_slope, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+
+  scale_x_continuous(limits = c(-8,0))+
+  xlab("Water potential at 50% stomatal conductance (MPa)")+
+  ylab("Slope of the stomatal response to water potential")+
+  theme_bw()
+
+```
+
+
+```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
+
+ggplot(df_res_valid)+
+    geom_pointrange(aes(x = gs_P50, y = g1, xmin = Pleaf_min, xmax = Pleaf_max), alpha = 0.6, col = "red", fill = "red") +
+  geom_text(aes(x = gs_P50, y = g1, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+
+  scale_x_continuous(limits = c(-8,0))+
+  xlab("Water potential at 50% stomatal conductance (MPa)")+
+  ylab("Slope of the stomatal response to An/Cs (g1)")+
+  theme_bw()
+
+```
+
+```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
+ggplot(df_res_valid)+
+  geom_point(aes(x = gs_max, y = g0), size = 2, alpha = 0.6, col = "red", fill = "red") +
+  geom_text(aes(x = gs_max, y = g0, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+
+  scale_x_continuous(limits = c(0, 0.6))+
+  scale_y_continuous(limits = c(0, 0.06))+
+  geom_abline(intercept = 0, slope = 0.1, col = "gray")+
+  geom_abline(intercept = 0, slope = 0.05, col = "gray", linetype= "dashed")+
+  xlab("Maximum stomatal conductance")+
+  ylab("Residual stomatal conductance (g0)")+
+  theme_bw()
+```
+
 
 ## References
