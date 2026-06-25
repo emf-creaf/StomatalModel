@@ -2,7 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
-raw-data/*
+data-raw/*
 plots/*
 data/*
 Rdata/*
