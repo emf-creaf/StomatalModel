@@ -1,10 +1,10 @@
 ---
 title: "On stomatal regulation in SurEau/MEDFATE"
 author: "M. De Cáceres, N. Martin-StPaul"
-date: "2023-11-21"
+date: "`r Sys.Date()`"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
   word_document: default
 bibliography: references.bib
 ---
@@ -107,9 +107,9 @@ $g_{sw,max}$ is an available trait for many species (or at least it seems more s
 
 ### Parameter estimation from gas exchange data
 
-We took the data sets used in @sabot_one_2022.
+#### Data preparation
 
-
+We used the data sets used in @sabot_one_2022, containing gas exchange, photosynthesis and leaf water potential data for 15 different species to evaluate the performance of the stomatal regulation model. We first excluded data rows corresponding to stomatal conductance outliers (compare columns `n` and `n_filt` below). With the remaining data, we determined the range of leaf water potential (`Pleaf_min` and `Pleaf_max`), estimated the maximum stomatal conductance ($g_{sw, max}$) as the 99% quantile (`gs_max`), as well as the average of $A_{n}/C_{s}$ values corresponding to stomatal conductance equal or higher than $g_{sw, max}$ (`An_Cs_gs_max`).
 
 
 ```{r, include=FALSE}
@@ -119,86 +119,232 @@ df_res <- read_delim("../data/gs_model_fit.csv",  delim = ";", locale = locale(d
 ```
 
 ```{r, echo=FALSE}
-knitr::kable(df_res[,c("Site","Species_accepted","n","Pleaf_min","Pleaf_max","gs_max")], caption = "Sites and species")
+knitr::kable(df_res[,c("Site","Species_accepted","n", "n_filt","Pleaf_min","Pleaf_max","gs_max", "An_Cs_gs_max")], caption = "Sites and species")
 ```
 
+#### Model fitting
 
- + $g0$ was constrained between 0 and 10% of maximum (95% quantile) stomatal conductance
- + $g1$ was constrained between 0 and 20 units.
+Different approaches to estimate the parameters of the stomatal regulation models were compared. In all cases, $g_0$ was set to 5% of maximum stomatal conductance, and we tested four different approaches for the remaining parameters.
+
+**Approach 1** - Three model parameters, $g_1$, $\Psi_{50,gs}$ and $slope_{gs}$, were fitted to observed data using a genetic algorithm, combined with gradient search, and the following boudaries:
+ + $g_1$ was constrained between 1 and 30 units.
  + $\Psi_{50,gs}$ was constrained between minimum and maximum observed leaf water potentials
- + $slope_{gs}$ was constrained between zero and 100 %/MPa.
+ + $slope_{gs}$ was constrained between 10%/MPa and 200 %/MPa.
 
+**Approach 2** - Two model parameters, $g_1$ and $\Psi_{50,gs}$, were fitted to data using the same approach, with the same boundaries, while $slope_{gs}$ was estimated from $\Psi_{50,gs}$, using a previously-established relationship.
 
-```{r, echo=FALSE}
-df_res_valid <- df_res #|>
- # dplyr::filter(valid)
-```
+**Approach 3** - Only one model parameter $g_1$ was fitted to data, whereas $\Psi_{50,gs}$ and $slope_{gs}$ were derived from turgor loss point, $\Psi_{tlp}$, assuming that $\Psi_{88, gs} = \Psi_{tlp}$ and $\Psi_{12, gs} = \Psi_{tlp}/12$. When $\Psi_{tlp}$ was not available, the following relationships with the water potential corresponding to 50% cavitation, $\Psi_{50}$, where used:
 
-```{r, echo=FALSE}
-knitr::kable(df_res_valid[,c("Site","Species_accepted", "mae", "g0", "g1", "gs_P50", "gs_slope")], caption = "Error function and fitted parameters for accepted models")
-```
+$\Psi_{88,gs} = \max(-3.5, \Psi_{50} \cdot 0.23 - 1.5)$
+
+$\Psi_{12,gs} = \Psi_{88,gs} + 1$
+
+Only those species where either $\Psi_{tlp}$ or $\Psi_{50}$ was available could be fitted with this method (or the following).
+
+**Approach 4** - All model parameters were estimated from available data, i.e. $\Psi_{50,gs}$ and $slope_{gs}$ were estimated as in *Approach 3*, whereas $g_1$ was estimated as indicated above.
+
+#### Model evaluation
+For each approach and dataset we calculated the percentage of explained variance ($R^2$), the mean absolute error ($MAE$) and the root mean squared error ($RMSE$). 
+
+### Results
+
+#### Overall results
+
+As expected from having a larger number of parameters fitted to data, *Approach 1* was the one with best performance (average MAE = `r  round(mean(df_res$M1_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M1_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M1_r2, na.rm=TRUE),1)`, across species), closely followed by *Approach 2* (MAE = `r  round(mean(df_res$M2_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M2_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M2_r2, na.rm=TRUE),1)`). Substantially lower performance was obtained with *Approach 3* (MAE = `r  round(mean(df_res$M3_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M3_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M3_r2, na.rm=TRUE),1)`) and *Approach 4* (MAE = `r  round(mean(df_res$M4_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M4_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M4_r2, na.rm=TRUE),1)`).
+
+Generally speaking, fitted values of $\Psi_{50,gs}$ tended to be more negative for *Approach 1* (black) and *Approach 2* (red) than the other two approaches (in blue and dark green), which tended to produce higher values for $g_1$.
 
 ```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
-ggplot(df_res_valid)+
-  geom_point(aes(y = Ptlp, x = gs_P50), size = 2, alpha = 0.6, col = "red", fill = "red") +
-  geom_pointrange(aes(y = Ptlp, x = gs_P50, xmin = Pleaf_min, xmax = Pleaf_max), alpha = 0.6, col = "red", fill = "red") +
-  geom_text(aes(y = Ptlp, x = gs_P50, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+
-  scale_x_continuous(limits = c(-8,0))+
-  scale_y_continuous(limits = c(-8,0))+
+ggplot(df_res)+
+  geom_point(aes(y = M1_g1, x = M1_gs_P50), size = 2, alpha = 0.5, col = "black", fill = "black") +
+  geom_text(aes(y = M1_g1, x = M1_gs_P50, label = Species_acronym), size = 3, col="black", vjust = "bottom", lineheight = 3)+
+  geom_point(aes(y = M2_g1, x = M2_gs_P50), size = 2, alpha = 0.5, col = "red", fill = "red") +
+  geom_text(aes(y = M2_g1, x = M2_gs_P50, label = Species_acronym), size = 3, col="red", vjust = "bottom", lineheight = 3)+
+  geom_point(aes(y = M3_g1, x = M3_gs_P50), size = 2, alpha = 0.5, col = "blue", fill = "blue") +
+  geom_text(aes(y = M3_g1, x = M3_gs_P50, label = Species_acronym), size = 3, col="blue", vjust = "bottom", lineheight = 3)+
+  geom_point(aes(y = M4_g1, x = M4_gs_P50), size = 2, alpha = 0.5, col = "darkgreen", fill = "darkgreen") +
+  geom_text(aes(y = M4_g1, x = M4_gs_P50, label = Species_acronym), size = 3, col="darkgreen", vjust = "bottom", lineheight = 3)+
+  xlab("Fitted gs_P50")+
+  ylab("Fitted g1")+
+  theme_bw()
+```
+
+This is also illustrated when comparing fitted or estimated $\Psi_{50,gs}$ with observed values of water potential at turgor loss point. 
+
+```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
+ggplot(df_res)+
+  geom_linerange(aes(y = Ptlp, xmin = Pleaf_min, xmax = Pleaf_max), col = "darkgray", fill = "gray") +
+  geom_point(aes(y = Ptlp, x = M1_gs_P50), size = 2, alpha = 0.5, col = "black", fill = "black") +
+  geom_point(aes(y = Ptlp, x = M2_gs_P50), size = 2, alpha = 0.5, col = "red", fill = "red") +
+  geom_point(aes(y = Ptlp, x = M3_gs_P50), size = 2, alpha = 0.5, col = "blue", fill = "blue") +
+  geom_point(aes(y = Ptlp, x = M4_gs_P50), size = 2, alpha = 0.5, col = "darkgreen", fill = "darkgreen") +
+  geom_text(aes(y = Ptlp, x = Pleaf_min, label = Species_acronym), size = 3, vjust = "bottom", lineheight = 3)+
+  scale_x_continuous(limits = c(-7,0))+
+  scale_y_continuous(limits = c(-7,0))+
   geom_abline(intercept = 0, slope=1, col = "gray")+
   xlab("Water potential at 50% stomatal conductance (MPa)")+
   ylab("Water potential at turgor loss point (MPa)")+
   theme_bw()
 ```
 
-```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
-ggplot(df_res_valid)+
-  geom_point(aes(y = Nleaf, x = g1), size = 2, alpha = 0.6, col = "red", fill = "red") +
-  geom_text(aes(y = Nleaf, x = g1, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+
-  geom_abline(intercept = 0, slope=1, col = "gray")+
-  xlab("Slope of the stomatal response to An/Cs (g1)")+
-  ylab("Leaf nitrogen")+
-  theme_bw()
+<!-- ```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6} -->
+<!-- ggplot(df_res)+ -->
+<!--   geom_point(aes(x = Vmax, y = M1_g1), size = 2, alpha = 0.3, col = "black", fill = "black") + -->
+<!--   geom_point(aes(x = Vmax, y = M2_g1), size = 2, alpha = 0.3, col = "red", fill = "red") + -->
+<!--   geom_point(aes(x = Vmax, y = M3_g1), size = 2, alpha = 0.3, col = "blue", fill = "blue") + -->
+<!--   geom_point(aes(x = Vmax, y = M4_g1), size = 2, alpha = 0.3, col = "darkgreen", fill = "darkgreen") + -->
+<!--   geom_text(aes(x = Vmax, y = M1_g1, label = Species_acronym), size = 3, vjust = "bottom", lineheight = 3)+ -->
+<!--   ylab("Fitted slope (g1)")+ -->
+<!--   xlab("Vcmax")+ -->
+<!--   theme_bw() -->
+<!-- ``` -->
+
+#### Detailed results by approach
+
+**Approach 1**
+
+```{r, echo=FALSE}
+knitr::kable(df_res[,c("Site","Species_accepted", "M1_g0", "M1_g1", "M1_gs_P50", "M1_gs_slope", "M1_r2", "M1_mae", "M1_rmse")], caption = "Fitted parameters and performance of approach 1")
+```
+**Approach 2**
+
+```{r, echo=FALSE}
+knitr::kable(df_res[,c("Site","Species_accepted", "M2_g0", "M2_g1", "M2_gs_P50", "M2_gs_slope", "M2_r2", "M2_mae", "M2_rmse")], caption = "Fitted parameters and performance of approach 2")
 ```
 
-```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
+**Approach 3**
 
-ggplot(df_res_valid)+
-  # geom_point(aes(x = gs_P50, y = gs_slope), size = 2, alpha = 0.6, col = "red", fill = "red") +
-  geom_pointrange(aes(x = gs_P50, y = gs_slope, xmin = Pleaf_min, xmax = Pleaf_max), alpha = 0.6, col = "red", fill = "red") +
-  geom_text(aes(x = gs_P50, y = gs_slope, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+
-  scale_x_continuous(limits = c(-8,0))+
-  xlab("Water potential at 50% stomatal conductance (MPa)")+
-  ylab("Slope of the stomatal response to water potential")+
-  theme_bw()
+```{r, echo=FALSE}
+knitr::kable(df_res[,c("Site","Species_accepted", "M3_g0", "M3_g1", "M3_gs_P50", "M3_gs_slope", "M3_r2", "M3_mae", "M3_rmse")] |> dplyr::filter(!is.na(M3_g0)), caption = "Fitted parameters and performance of approach 3")
+```
 
+**Approach 4**
+
+```{r, echo=FALSE}
+knitr::kable(df_res[,c("Site","Species_accepted", "M4_g0", "M4_g1", "M4_gs_P50", "M4_gs_slope", "M4_r2", "M4_mae", "M4_rmse")] |> dplyr::filter(!is.na(M4_g0)), caption = "Fitted parameters and performance of approach 4")
 ```
 
 
-```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
 
-ggplot(df_res_valid)+
-    geom_pointrange(aes(x = gs_P50, y = g1, xmin = Pleaf_min, xmax = Pleaf_max), alpha = 0.6, col = "red", fill = "red") +
-  geom_text(aes(x = gs_P50, y = g1, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+
-  scale_x_continuous(limits = c(-8,0))+
-  xlab("Water potential at 50% stomatal conductance (MPa)")+
-  ylab("Slope of the stomatal response to An/Cs (g1)")+
-  theme_bw()
+#### Detailed results by data set
 
+**Many Peaks Range / Alphitonia excelsa**
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/ManyPeaksRange_Alphitonia_excelsa.png")
 ```
 
-```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
-ggplot(df_res_valid)+
-  geom_point(aes(x = gs_max, y = g0), size = 2, alpha = 0.6, col = "red", fill = "red") +
-  geom_text(aes(x = gs_max, y = g0, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+
-  scale_x_continuous(limits = c(0, 0.6))+
-  scale_y_continuous(limits = c(0, 0.06))+
-  geom_abline(intercept = 0, slope = 0.1, col = "gray")+
-  geom_abline(intercept = 0, slope = 0.05, col = "gray", linetype= "dashed")+
-  xlab("Maximum stomatal conductance")+
-  ylab("Residual stomatal conductance (g0)")+
-  theme_bw()
+#### Many Peaks Range / Austromyrtus bidwillii
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/ManyPeaksRange_Austromyrtus_bidwillii.png")
 ```
+
+#### Many Peaks Range / Brachychiton australis
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/ManyPeaksRange_Brachychiton_australis.png")
+```
+
+#### Many Peaks Range / Cochlospermum gillivraei
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/ManyPeaksRange_Cochlospermum_gillivraei.png")
+```
+
+#### Parque Natural Metropolitano / Calycophyllum candidissimum
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/Parque_Natural_Metropolitano_Calycophyllum_candidissimum.png")
+```
+
+#### Puechabon / Quercus ilex
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/Puechabon_Quercus_ilex.png")
+```
+
+#### Richmond / Eucalyptus cladocalyx
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/Richmond_Eucalyptus_cladocalyx.png")
+```
+
+#### Richmond / Eucalyptus dunnii
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/Richmond_Eucalyptus_dunnii.png")
+```
+
+#### Richmond / Eucalyptus saligna
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/Richmond_Eucalyptus_saligna.png")
+```
+
+#### San Lorenzo / Carapa guianensis
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/San_Lorenzo_Carapa_guianensis.png")
+```
+
+#### San Lorenzo / Tachigali versicolor
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/San_Lorenzo_Tachigali_versicolor.png")
+```
+
+#### San Lorenzo / Tocoyena pittieri
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/San_Lorenzo_Tocoyena_pittieri.png")
+```
+
+#### Sevilleta / Juniperus monosperma
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/Sevilleta_Juniperus_monosperma.png")
+```
+
+#### Sevilleta / Pinus edulis
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/Sevilleta_Pinus_edulis.png")
+```
+
+
+#### Vic la Gardiole / Quercus ilex
+```{r, out.width='100%', fig.align="center", echo=FALSE}
+knitr::include_graphics("../plots/Vic_la_Gardiole_Quercus_ilex.png")
+```
+
+
+
+
+<!-- ```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6} -->
+
+<!-- ggplot(df_res_valid)+ -->
+<!--   # geom_point(aes(x = gs_P50, y = gs_slope), size = 2, alpha = 0.6, col = "red", fill = "red") + -->
+<!--   geom_pointrange(aes(x = gs_P50, y = gs_slope, xmin = Pleaf_min, xmax = Pleaf_max), alpha = 0.6, col = "red", fill = "red") + -->
+<!--   geom_text(aes(x = gs_P50, y = gs_slope, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+ -->
+<!--   scale_x_continuous(limits = c(-8,0))+ -->
+<!--   xlab("Water potential at 50% stomatal conductance (MPa)")+ -->
+<!--   ylab("Slope of the stomatal response to water potential")+ -->
+<!--   theme_bw() -->
+
+<!-- ``` -->
+
+
+<!-- ```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6} -->
+
+<!-- ggplot(df_res_valid)+ -->
+<!--     geom_pointrange(aes(x = gs_P50, y = g1, xmin = Pleaf_min, xmax = Pleaf_max), alpha = 0.6, col = "red", fill = "red") + -->
+<!--   geom_text(aes(x = gs_P50, y = g1, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+ -->
+<!--   scale_x_continuous(limits = c(-8,0))+ -->
+<!--   xlab("Water potential at 50% stomatal conductance (MPa)")+ -->
+<!--   ylab("Slope of the stomatal response to An/Cs (g1)")+ -->
+<!--   theme_bw() -->
+
+<!-- ``` -->
+
+<!-- ```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6} -->
+<!-- ggplot(df_res_valid)+ -->
+<!--   geom_point(aes(x = gs_max, y = g0), size = 2, alpha = 0.6, col = "red", fill = "red") + -->
+<!--   geom_text(aes(x = gs_max, y = g0, label = Species_accepted), size = 3, vjust = "bottom", lineheight = 3)+ -->
+<!--   scale_x_continuous(limits = c(0, 0.6))+ -->
+<!--   scale_y_continuous(limits = c(0, 0.06))+ -->
+<!--   geom_abline(intercept = 0, slope = 0.1, col = "gray")+ -->
+<!--   geom_abline(intercept = 0, slope = 0.05, col = "gray", linetype= "dashed")+ -->
+<!--   xlab("Maximum stomatal conductance")+ -->
+<!--   ylab("Residual stomatal conductance (g0)")+ -->
+<!--   theme_bw() -->
+<!-- ``` -->
 
 
 ## References

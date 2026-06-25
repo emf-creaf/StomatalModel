@@ -34,6 +34,22 @@ sp_vec <- c("Eucalyptus capillosa",
             "Juniperus monosperma",
             "Pinus edulis",
             "Quercus ilex")
+acr_vec <- c("EUCA",
+            "ALEX",
+            "AUBI",
+            "BRAU",
+            "COGI",
+            "CACA",
+            "QUIL",
+            "EUCL",
+            "EUDU",
+            "EUSA",
+            "CAGU",
+            "TAVE",
+            "TOPI",
+            "JUMO",
+            "PIED",
+            "QUIL")
 site_vec <- c("Corrigin",
               "ManyPeaksRange",
               "ManyPeaksRange",
@@ -72,11 +88,18 @@ DB_path <- "~/OneDrive/mcaceres_work/model_development/medfate_parameterization/
 harmonized_trait_path <- paste0(DB_path,"data/harmonized_trait_sources")
 db <- data.frame(originalName = sp_vec)
 db_post <- traits4models::harmonize_taxonomy_WFO(db, WFO_backbone_file = WFO_file)
-trait_obs  <- traits4models::get_taxon_trait_means(harmonized_trait_path, traits = c("Nleaf", "Vmax", "Ptlp", "Gs_P50", 
+trait_obs  <- traits4models::get_taxon_trait_means(harmonized_trait_path, traits = c("SLA","Nleaf", "Vmax", "Ptlp", "Gs_P50", 
                                                                                      "VCstem_P50", "VCstem_slope", "LeafPI0", "LeafEPS", "Gswmin"))
 ## USE RELATIONSHIP BETWEEN P50 and slope
 is_na <- is.na(trait_obs$VCstem_slope)
 trait_obs$VCstem_slope[is_na] = 478 / (trait_obs$VCstem_P50[is_na]^2) - 149/trait_obs$VCstem_P50[is_na]
+
+## ESTIMATE VCMAX
+## Walker AP, Beckerman AP, Gu L, et al (2014) The relationship of leaf photosynthetic traits - Vcmax and Jmax - to leaf nitrogen, leaf phosphorus, and specific leaf area: A meta-analysis and modeling study. Ecol Evol 4:3218–3235. doi: 10.1002/ece3.1173
+is_na <- is.na(trait_obs$Vmax)
+lnN <- log(trait_obs$Nleaf[is_na]/trait_obs$SLA[is_na])
+lnSLA <- log(trait_obs$SLA[is_na]/1000.0)
+trait_obs$Vmax[is_na] <- exp(1.993 + 2.555*lnN - 0.372*lnSLA + 0.422*lnN*lnSLA)
 
 # ggplot(trait_obs)+
 #   geom_point(aes(x=VCstem_P50, y=VCstem_slope))
@@ -87,7 +110,8 @@ trait_obs$VCstem_slope[is_na] = 478 / (trait_obs$VCstem_P50[is_na]^2) - 149/trai
 
 df_res <- data.frame(Site = site_vec,
                      Species_original = sp_vec,
-                     Species_accepted = db_post$acceptedName) |>
+                     Species_accepted = db_post$acceptedName,
+                     Species_acronym = acr_vec) |>
   dplyr::left_join(trait_obs, by=c("Species_accepted"="acceptedName")) |>
   dplyr::mutate(n = NA,
                 n_filt = NA,
@@ -226,7 +250,7 @@ for(index in valid) {
                popSize = 300,
                maxiter = 400,
                lower= c(1, df_res$Pleaf_min[index], 10),
-               upper = c(20, df_res$Pleaf_max[index], 200),
+               upper = c(30, df_res$Pleaf_max[index], 200),
                optim = TRUE, monitor = FALSE)
   
   df_res$M1_mae[index] <- -ga_M1@fitnessValue
@@ -249,7 +273,7 @@ for(index in valid) {
               popSize = 300,
               maxiter = 400,
               lower= c(1, df_res$Pleaf_min[index]),
-              upper = c(20, df_res$Pleaf_max[index]),
+              upper = c(30, df_res$Pleaf_max[index]),
               optim = TRUE, monitor = FALSE)
   
   df_res$M2_mae[index] <- -ga_M2@fitnessValue
@@ -271,7 +295,8 @@ for(index in valid) {
   is_m3_m4 <- FALSE
   if(!is.na(tlp) || !is.na(P50)) {
     is_m3_m4 <- TRUE
-    if(is.na(tlp)) {
+    is_tlp <- !is.na(tlp)
+    if(!is_tlp) {
       P_gs88 <- max(-3.5, P50*0.23 - 1.5)
       P_gs12 <- P_gs88 + 1
     } else {
@@ -288,7 +313,7 @@ for(index in valid) {
                 popSize = 300,
                 maxiter = 400,
                 lower= c(1, df_res$Pleaf_min[index]),
-                upper = c(20, df_res$Pleaf_max[index]),
+                upper = c(30, df_res$Pleaf_max[index]),
                 optim = TRUE, monitor = FALSE)
     df_res$M3_g0[index] <- df_res$gs_max[index]*0.05 
     df_res$M3_g1[index] <-ga_M3@solution[1,1]
@@ -320,6 +345,7 @@ for(index in valid) {
   print(df_res[index,])
   
   g1 <- ggplot(xydata)+
+    geom_abline(intercept = 0, slope = 1, col = "gray", size = 1.5)+
     geom_point(aes(x = gs, y = M1_gs_pred), col = "black", alpha= 0.5)+
     geom_point(aes(x = gs, y = M2_gs_pred), col = "red", alpha= 0.5)+
     geom_text(x =max(xydata$gs)*0.05, y = max(xydata$gs)*0.95,
@@ -339,7 +365,6 @@ for(index in valid) {
     g1 <- g1+
       geom_point(aes(x = gs, y = M3_gs_pred), col = "blue", alpha= 0.5)+
       geom_point(aes(x = gs, y = M4_gs_pred), col = "darkgreen", alpha= 0.5)+
-      geom_abline(intercept = 0, slope = 1, col = "gray")+
       geom_text(x =max(xydata$gs)*0.05, y = max(xydata$gs)*0.85,
                 label = paste0("M3 - R2 = ", round(100*df_res$M3_r2[index],1), 
                                "% MAE = ", round(df_res$M3_mae[index],3), 
@@ -361,57 +386,52 @@ for(index in valid) {
     theme_bw() +
     labs(subtitle = " ")
   
-  mdata1 <- data.frame(Pleaf = seq(-9, 0, by=0.01),
-                       An_Cs = max(xydata$An_Cs)) |>
-    dplyr::mutate(M1_gs_pred = gs(An_Cs, Pleaf, 
-                               df_res$M1_g0[index], df_res$M1_g1[index], 
+  mdata1 <- data.frame(Pleaf = seq(-9, 0, by=0.01)) |>
+    dplyr::mutate(M1_gs_pred = max(xydata$gs)*sigmoid(Pleaf, 
                                df_res$M1_gs_P50[index], df_res$M1_gs_slope[index])) |>
-    dplyr::mutate(M2_gs_pred = gs(An_Cs, Pleaf, 
-                               df_res$M2_g0[index], df_res$M2_g1[index], 
+    dplyr::mutate(M2_gs_pred = max(xydata$gs)*sigmoid(Pleaf, 
                                df_res$M2_gs_P50[index], df_res$M2_gs_slope[index]))
   if(is_m3_m4) {
     mdata1 <- mdata1 |>
-    dplyr::mutate(M3_gs_pred = gs(An_Cs, Pleaf, 
-                                 df_res$M3_g0[index], df_res$M3_g1[index], 
+    dplyr::mutate(M3_gs_pred = max(xydata$gs)*sigmoid(Pleaf, 
                                  df_res$M3_gs_P50[index], df_res$M3_gs_slope[index]))|>
-    dplyr::mutate(M4_gs_pred = gs(An_Cs, Pleaf, 
-                                  df_res$M4_g0[index], df_res$M4_g1[index], 
+    dplyr::mutate(M4_gs_pred = max(xydata$gs)*sigmoid(Pleaf, 
                                   df_res$M4_gs_P50[index], df_res$M4_gs_slope[index]))
   }
   
   g2 <- ggplot(xydata)+
     geom_point(aes(x = Pleaf, y = gs, col = An_Cs))+
     geom_line(aes(x=Pleaf, y=M1_gs_pred), data = mdata1, col = "black")+
-    geom_vline(xintercept = df_res$M1_gs_P50[index], col = "black", size = 2, alpha = 0.5)+
+    geom_vline(xintercept = df_res$M1_gs_P50[index], col = "black", size = 1.5, alpha = 0.5)+
     geom_line(aes(x=Pleaf, y=M2_gs_pred), data = mdata1, col = "red")+
-    geom_vline(xintercept = df_res$M2_gs_P50[index], col = "red", size = 2, alpha = 0.5)
+    geom_vline(xintercept = df_res$M2_gs_P50[index], col = "red", size = 1.5, alpha = 0.5)
   if(is_m3_m4) {
     g2 <- g2+
       geom_line(aes(x=Pleaf, y=M3_gs_pred), data = mdata1, col = "blue")+
-      geom_vline(xintercept = df_res$M3_gs_P50[index], col = "blue", size = 2, alpha = 0.5)+
+      geom_vline(xintercept = df_res$M3_gs_P50[index], col = "blue", size = 1.5, alpha = 0.5)+
       geom_line(aes(x=Pleaf, y=M4_gs_pred), data = mdata1, col = "darkgreen")+
-      geom_vline(xintercept = df_res$M4_gs_P50[index], col = "darkgreen", size = 2, alpha = 0.5)
+      geom_vline(xintercept = df_res$M4_gs_P50[index], col = "darkgreen", size = 1.5, alpha = 0.5)
   }
+  fact <- 100/max(xydata$gs)
   g2 <- g2+
     scale_x_continuous(limits = c(df_res$Pleaf_min[index]-0.5,0))+
+    scale_y_continuous(sec.axis = sec_axis(~ . * fact, name = "Gs (%) / PLC (%)")) +
     xlab("Leaf water potential (MPa)")+
     ylab("Observed stomatal conductance")
   if(!is.na(df_res$VCstem_P50[index]) && !is.na(df_res$VCstem_slope[index])) {
-    mdata1$PLC <- sigmoid(mdata1$Pleaf, df_res$VCstem_P50[index], df_res$VCstem_slope[index])
-    fact <- 100/max(mdata1$M1_gs_pred)
+    mdata1$PLC <- sigmoid(mdata1$Pleaf, df_res$VCstem_P50[index], df_res$VCstem_slope[index])*max(xydata$gs)
     g2 <- g2 +
-      geom_line(aes(x=Pleaf, y=PLC*max(M1_gs_pred)), data = mdata1, col ="gray")+
+      geom_line(aes(x=Pleaf, y=PLC), data = mdata1, col ="gray")+
       scale_x_continuous(limits = c(df_res$VCstem_P50[index]-1.0,0))+
-      scale_y_continuous(sec.axis = sec_axis(~ . * fact, name = "PLC (%)")) +
-      geom_vline(xintercept = df_res$VCstem_P50[index], col = "gray", size = 2, alpha = 0.5)
+      geom_vline(xintercept = df_res$VCstem_P50[index], col = "gray", size = 1.5, alpha = 0.5)
   }
   g2 <- g2 +
     theme_bw()+
     theme(legend.position = c(0.9, 0.2)) +
-    labs(subtitle = paste(site_vec[index], "/", df_res$Species_accepted[index]))
+    labs(subtitle = paste(site_vec[index], "/", df_res$Species_accepted[index], ifelse(!is_tlp, " *", "")))
 
   mdata2 <- data.frame(Pleaf = 0.0,
-                       An_Cs = xydata$An_Cs) |>
+                       An_Cs = seq(0, max(xydata$An_Cs), by=0.001)) |>
     dplyr::mutate(M1_gs_pred = gs(An_Cs, Pleaf, 
                                   df_res$M1_g0[index], df_res$M1_g1[index], 
                                   df_res$M1_gs_P50[index], df_res$M1_gs_slope[index])) |>
@@ -433,7 +453,8 @@ for(index in valid) {
     geom_line(aes(x=An_Cs, y=M2_gs_pred), data = mdata2, col="red")
   if(is_m3_m4) {
     g3 <- g3 +
-     geom_line(aes(x=An_Cs, y=M3_gs_pred), data = mdata2, col="blue")
+      geom_line(aes(x=An_Cs, y=M3_gs_pred), data = mdata2, col="blue")+
+      geom_line(aes(x=An_Cs, y=M4_gs_pred), data = mdata2, col="darkgreen")
   }
   g3 <- g3+
     xlab("An/Cs")+
