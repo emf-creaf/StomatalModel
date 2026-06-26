@@ -3,9 +3,9 @@ title: "On stomatal regulation in SurEau/MEDFATE"
 author: "M. De Cáceres, N. Martin-StPaul"
 date: "`r Sys.Date()`"
 output:
-  pdf_document: default
   html_document: default
   word_document: default
+  pdf_document: default
 bibliography: references.bib
 ---
 
@@ -72,7 +72,7 @@ With the former premises, we suggest the following equation for $g_{sw}$:
 $$
 g_{sw} = g_{sw,ft} \cdot f_l(\Psi_l) + g_{sw,res} \cdot (1- f_l(\Psi_l))
 $$
-where $g_{sw,ft}$ would be the stomatal conductance at full turgor (i.e., under non-stressed conditions) and $g_{sw,res}$ would be the residual stomatal conductance due to incomplete stomatal closure with drought. To model $f_l$ we suggest using a single Sigmoid function of $\Psi_l$ with parameters $\Psi_{50,gs}$ and $slope_{gs}$. If transpiration due to incomplete stomatal closure, $g_{sw,res}$, is dealt along with cuticular transpiration, a simpler approach to $g_{sw}$ is:
+where $g_{sw,ft}$ would be the stomatal conductance at full turgor (i.e., under non-stressed conditions) and $g_{sw,res}$ would be the residual stomatal conductance due to incomplete stomatal closure with drought. To model $f_l$ we suggest using a single Sigmoid function of $\Psi_l$ with parameters $\Psi_{50,gs,B}$ and $slope_{gs,B}$. Note that since these are model parameters, they do not necessarily have the same meaning as measured values for $\Psi_{50,gs}$ and $slope_{gs}$ (see model fitting exercise below). If transpiration due to incomplete stomatal closure, $g_{sw,res}$, is dealt along with cuticular transpiration, a simpler approach to $g_{sw}$ is:
 $$
 g_{sw} = g_{sw, ft} \cdot f_l(\Psi_l)
 $$
@@ -89,9 +89,9 @@ g_{sw,ft} = \max \left( g_0, g_1 \cdot \frac{A_n}{c_s} + g_0 \right)
 $$
 In practice, Baldocchi's [-@baldocchi_analytical_1994] analytical solution can be used to determine $g_{sw,ft}$, which is bounded by $g_0$. Then factor $f_l(\Psi_l)$ is applied to determine $g_{sw}$ and both $A_n$ and $c_i$ need to be recomputed. Provided that a sufficiently small time step is used in the model, the estimation of $A_n$ and $g_{sw}$ can be updated once per time step and the estimated $g_{sw}$ will feedback on $\Psi_l$ in the next time step following the plant hydraulics sub-model.
 
-### Parameterization
+### Parameter estimation
 
-Parameters $\Psi_{50,gs}$ and $slope_{gs}$ can be estimated from empirical data of the response of stomatal conductance to water potential (i.e. the vulnerability curve of $g_{sw}$), or use the water potential at turgor loss point as a surrogate to $\Psi_{50,gs}$. 
+Parameters $\Psi_{50,gs,B}$ and $slope_{gs,B}$ can be estimated from empirical data of the response of stomatal conductance to water potential (i.e. the vulnerability curve of $g_{sw}$), or use the water potential at turgor loss point as a surrogate to $\Psi_{50,gs}$. 
 
 Parameters $g_1$ and $g_0$ can be empirically estimated from photosynthesis data using measurements corresponding to low $D$ (i.e. high $h_r$) and well-watered plants. If not available, we suggest the following. Ball's relationship should hold between maximum values:
 $$
@@ -124,65 +124,83 @@ knitr::kable(df_res[,c("Site","Species_accepted","n", "n_filt","Pleaf_min","Plea
 
 #### Model fitting
 
-Different approaches to estimate the parameters of the stomatal regulation models were compared. In all cases, $g_0$ was set to 5% of maximum stomatal conductance, and we tested four different approaches for the remaining parameters.
+Different approaches to estimate the parameters of the stomatal regulation models were compared. In all cases, $g_0$ was set to 5% of maximum stomatal conductance, and we tested five different approaches for the remaining parameters.
 
-**Approach 1** - Three model parameters, $g_1$, $\Psi_{50,gs}$ and $slope_{gs}$, were fitted to observed data using a genetic algorithm, combined with gradient search, and the following boudaries:
+**Approach 1** - Three model parameters, $g_1$, $\Psi_{50,gs,B}$ and $slope_{gs,B}$, were fitted to observed data using a genetic algorithm, combined with gradient search, and the following boudaries:
  + $g_1$ was constrained between 1 and 30 units.
- + $\Psi_{50,gs}$ was constrained between minimum and maximum observed leaf water potentials
- + $slope_{gs}$ was constrained between 10%/MPa and 200 %/MPa.
+ + $\Psi_{50,gs,B}$ was constrained between minimum and maximum observed leaf water potentials
+ + $slope_{gs,B}$ was constrained between 10%/MPa and 200 %/MPa.
 
-**Approach 2** - Two model parameters, $g_1$ and $\Psi_{50,gs}$, were fitted to data using the same approach, with the same boundaries, while $slope_{gs}$ was estimated from $\Psi_{50,gs}$, using a previously-established relationship.
+**Approach 2** - Two model parameters, $g_1$ and $\Psi_{50,gs,B}$, were fitted to data using the same approach, with the same boundaries, while $slope_{gs,B}$ was estimated from $\Psi_{50,gs,B}$, using a previously-established relationship.
 
-**Approach 3** - Only one model parameter $g_1$ was fitted to data, whereas $\Psi_{50,gs}$ and $slope_{gs}$ were derived from turgor loss point, $\Psi_{tlp}$, assuming that $\Psi_{88, gs} = \Psi_{tlp}$ and $\Psi_{12, gs} = \Psi_{tlp}/12$. When $\Psi_{tlp}$ was not available, the following relationships with the water potential corresponding to 50% cavitation, $\Psi_{50}$, where used:
+**Approach 3** - Only one model parameter $g_1$ was fitted to data, whereas $\Psi_{50,gs,B}$ was made equal to estimates of $\Psi_{50,gs}$ derived from turgor loss point ($\Psi_{tlp}$), assuming that $\Psi_{88, gs} = \Psi_{tlp}$ and $\Psi_{12, gs} = \Psi_{tlp}/12$.
+
+$\Psi_{50,gs,B} = \Psi_{50,gs} = (\Psi_{12,gs} + \Psi_{88,gs})/2$
+
+When $\Psi_{tlp}$ was not available, the following relationships with the water potential corresponding to 50% cavitation, $\Psi_{50}$, where used:
 
 $\Psi_{88,gs} = \max(-3.5, \Psi_{50} \cdot 0.23 - 1.5)$
 
 $\Psi_{12,gs} = \Psi_{88,gs} + 1$
 
-Only those species where either $\Psi_{tlp}$ or $\Psi_{50}$ was available could be fitted with this method (or the following).
+Parameter $slope_{gs,B}$ was estimated as in *Approach 2*. Only those species where either $\Psi_{tlp}$ or $\Psi_{50}$ was available could be fitted with this method (or the following).
 
-**Approach 4** - All model parameters were estimated from available data, i.e. $\Psi_{50,gs}$ and $slope_{gs}$ were estimated as in *Approach 3*, whereas $g_1$ was estimated as indicated above.
+**Approach 4** - Only one model parameter $g_1$ was fitted to data, whereas $\Psi_{50,gs,B}$ was estimated using directly turgor loss, i.e $\Psi_{50,gs,B} = \Psi_{88,gs} = \Psi_{tlp}$ point. Parameter $slope_{gs,B}$ was estimated as in *Approach 2*.
+
+**Approach 5** - All model parameters were estimated from available data, i.e. $\Psi_{50,gs,B}$ and $slope_{gs,B}$ were estimated as in *Approach 4*, whereas $g_1$ was estimated as the ratio between $g_{sw, max}$ (`gs_max`) and the average of $A_{n}/C_{s}$ values corresponding to stomatal conductance equal or higher than $g_{sw, max}$ (`An_Cs_gs_max`). 
 
 #### Model evaluation
 For each approach and dataset we calculated the percentage of explained variance ($R^2$), the mean absolute error ($MAE$) and the root mean squared error ($RMSE$). 
 
 ### Results
 
-#### Overall results
+#### Fit to observed stomatal conductance
 
-As expected from having a larger number of parameters fitted to data, *Approach 1* was the one with best performance (average MAE = `r  round(mean(df_res$M1_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M1_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M1_r2, na.rm=TRUE),1)`, across species), closely followed by *Approach 2* (MAE = `r  round(mean(df_res$M2_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M2_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M2_r2, na.rm=TRUE),1)`). Substantially lower performance was obtained with *Approach 3* (MAE = `r  round(mean(df_res$M3_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M3_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M3_r2, na.rm=TRUE),1)`) and *Approach 4* (MAE = `r  round(mean(df_res$M4_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M4_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M4_r2, na.rm=TRUE),1)`).
+Average performance across species:
 
-Generally speaking, fitted values of $\Psi_{50,gs}$ tended to be more negative for *Approach 1* (black) and *Approach 2* (red) than the other two approaches (in blue and dark green), which tended to produce higher values for $g_1$.
++ *Approach 1*: MAE = `r  round(mean(df_res$M1_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M1_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M1_r2, na.rm=TRUE),1)`
++ *Aprroach 2*: MAE = `r  round(mean(df_res$M2_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M2_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M2_r2, na.rm=TRUE),1)`
++ *Aprroach 3*: MAE = `r  round(mean(df_res$M3_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M3_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M3_r2, na.rm=TRUE),1)`
++ *Aprroach 4*: MAE = `r  round(mean(df_res$M4_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M4_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M4_r2, na.rm=TRUE),1)`
++ *Aprroach 5*: MAE = `r  round(mean(df_res$M5_mae, na.rm=TRUE),3)`, RMSE = `r  round(mean(df_res$M5_rmse, na.rm=TRUE), 3)`, R2 = `r  round(100*mean(df_res$M5_r2, na.rm=TRUE),1)`
+
+As expected from having a larger number of parameters fitted to data, *Approach 1* was the one with best performance , closely followed by *Approach 2*. Substantially lower performance was obtained with *Approach 3* .
+
+#### Parameter estimates
+
 
 ```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
 ggplot(df_res)+
-  geom_point(aes(y = M1_g1, x = M1_gs_P50), size = 2, alpha = 0.5, col = "black", fill = "black") +
-  geom_text(aes(y = M1_g1, x = M1_gs_P50, label = Species_acronym), size = 3, col="black", vjust = "bottom", lineheight = 3)+
-  geom_point(aes(y = M2_g1, x = M2_gs_P50), size = 2, alpha = 0.5, col = "red", fill = "red") +
-  geom_text(aes(y = M2_g1, x = M2_gs_P50, label = Species_acronym), size = 3, col="red", vjust = "bottom", lineheight = 3)+
-  geom_point(aes(y = M3_g1, x = M3_gs_P50), size = 2, alpha = 0.5, col = "blue", fill = "blue") +
-  geom_text(aes(y = M3_g1, x = M3_gs_P50, label = Species_acronym), size = 3, col="blue", vjust = "bottom", lineheight = 3)+
-  geom_point(aes(y = M4_g1, x = M4_gs_P50), size = 2, alpha = 0.5, col = "darkgreen", fill = "darkgreen") +
-  geom_text(aes(y = M4_g1, x = M4_gs_P50, label = Species_acronym), size = 3, col="darkgreen", vjust = "bottom", lineheight = 3)+
-  xlab("Fitted gs_P50")+
-  ylab("Fitted g1")+
+  geom_point(aes(y = M1_g1, x = M1_gs_P50_B), size = 2, alpha = 0.8, col = "black", fill = "black") +
+  geom_text(aes(y = M1_g1, x = M1_gs_P50_B, label = Species_acronym), size = 3, col="black", vjust = "bottom", lineheight = 3)+
+  geom_point(aes(y = M2_g1, x = M2_gs_P50_B), size = 2, alpha = 0.8, col = "red", fill = "red") +
+  geom_text(aes(y = M2_g1, x = M2_gs_P50_B, label = Species_acronym), size = 3, col="red", vjust = "bottom", lineheight = 3)+
+  geom_point(aes(y = M3_g1, x = M3_gs_P50_B), size = 2, alpha = 0.8, col = "blue", fill = "blue") +
+  geom_text(aes(y = M3_g1, x = M3_gs_P50_B, label = Species_acronym), size = 3, col="blue", vjust = "bottom", lineheight = 3)+
+  geom_point(aes(y = M4_g1, x = M4_gs_P50_B), size = 2, alpha = 0.8, col = "green", fill = "green") +
+  geom_text(aes(y = M4_g1, x = M4_gs_P50_B, label = Species_acronym), size = 3, col="green", vjust = "bottom", lineheight = 3)+
+  geom_point(aes(y = M5_g1, x = M5_gs_P50_B), size = 2, alpha = 0.8, col = "orange", fill = "orange") +
+  geom_text(aes(y = M5_g1, x = M5_gs_P50_B, label = Species_acronym), size = 3, col="orange", vjust = "bottom", lineheight = 3)+
+  xlab("Estimate gs_P50_B (MPa)")+
+  ylab("Estimate g1")+
   theme_bw()
 ```
 
-This is also illustrated when comparing fitted or estimated $\Psi_{50,gs}$ with observed values of water potential at turgor loss point. 
+This is also illustrated when comparing fitted or estimated $\Psi_{50,gs,B}$ with observed values of water potential at turgor loss point. 
 
 ```{r, warning= FALSE, echo = FALSE, fig.height=6, fig.width=6}
 ggplot(df_res)+
   geom_linerange(aes(y = Ptlp, xmin = Pleaf_min, xmax = Pleaf_max), col = "darkgray", fill = "gray") +
-  geom_point(aes(y = Ptlp, x = M1_gs_P50), size = 2, alpha = 0.5, col = "black", fill = "black") +
-  geom_point(aes(y = Ptlp, x = M2_gs_P50), size = 2, alpha = 0.5, col = "red", fill = "red") +
-  geom_point(aes(y = Ptlp, x = M3_gs_P50), size = 2, alpha = 0.5, col = "blue", fill = "blue") +
-  geom_point(aes(y = Ptlp, x = M4_gs_P50), size = 2, alpha = 0.5, col = "darkgreen", fill = "darkgreen") +
+  geom_point(aes(y = Ptlp, x = M1_gs_P50_B), size = 2, alpha = 0.8, col = "black", fill = "black") +
+  geom_point(aes(y = Ptlp, x = M2_gs_P50_B), size = 2, alpha = 0.8, col = "red", fill = "red") +
+  geom_point(aes(y = Ptlp, x = M3_gs_P50_B), size = 2, alpha = 0.8, col = "blue", fill = "blue") +
+  geom_point(aes(y = Ptlp, x = M4_gs_P50_B), size = 2, alpha = 0.8, col = "green", fill = "green") +
+  geom_point(aes(y = Ptlp, x = M5_gs_P50_B), size = 2, alpha = 0.8, col = "orange", fill = "orange") +
   geom_text(aes(y = Ptlp, x = Pleaf_min, label = Species_acronym), size = 3, vjust = "bottom", lineheight = 3)+
   scale_x_continuous(limits = c(-7,0))+
   scale_y_continuous(limits = c(-7,0))+
   geom_abline(intercept = 0, slope=1, col = "gray")+
-  xlab("Water potential at 50% stomatal conductance (MPa)")+
+  xlab("Estimate gs_P50_B (MPa)")+
   ylab("Water potential at turgor loss point (MPa)")+
   theme_bw()
 ```
@@ -204,27 +222,32 @@ ggplot(df_res)+
 **Approach 1**
 
 ```{r, echo=FALSE}
-knitr::kable(df_res[,c("Site","Species_accepted", "M1_g0", "M1_g1", "M1_gs_P50", "M1_gs_slope", "M1_r2", "M1_mae", "M1_rmse")], caption = "Fitted parameters and performance of approach 1")
+knitr::kable(df_res[,c("Site","Species_accepted", "M1_g0", "M1_g1", "M1_gs_P50_B", "M1_gs_slope", "M1_r2", "M1_mae", "M1_rmse")], caption = "Fitted parameters and performance of approach 1")
 ```
 **Approach 2**
 
 ```{r, echo=FALSE}
-knitr::kable(df_res[,c("Site","Species_accepted", "M2_g0", "M2_g1", "M2_gs_P50", "M2_gs_slope", "M2_r2", "M2_mae", "M2_rmse")], caption = "Fitted parameters and performance of approach 2")
+knitr::kable(df_res[,c("Site","Species_accepted", "M2_g0", "M2_g1", "M2_gs_P50_B", "M2_gs_slope", "M2_r2", "M2_mae", "M2_rmse")], caption = "Fitted parameters and performance of approach 2")
 ```
 
 **Approach 3**
 
 ```{r, echo=FALSE}
-knitr::kable(df_res[,c("Site","Species_accepted", "M3_g0", "M3_g1", "M3_gs_P50", "M3_gs_slope", "M3_r2", "M3_mae", "M3_rmse")] |> dplyr::filter(!is.na(M3_g0)), caption = "Fitted parameters and performance of approach 3")
+knitr::kable(df_res[,c("Site","Species_accepted", "M3_g0", "M3_g1", "M3_gs_P50_B", "M3_gs_slope", "M3_r2", "M3_mae", "M3_rmse")] |> dplyr::filter(!is.na(M3_g0)), caption = "Fitted parameters and performance of approach 3")
 ```
 
 **Approach 4**
 
 ```{r, echo=FALSE}
-knitr::kable(df_res[,c("Site","Species_accepted", "M4_g0", "M4_g1", "M4_gs_P50", "M4_gs_slope", "M4_r2", "M4_mae", "M4_rmse")] |> dplyr::filter(!is.na(M4_g0)), caption = "Fitted parameters and performance of approach 4")
+knitr::kable(df_res[,c("Site","Species_accepted", "M4_g0", "M4_g1", "M4_gs_P50_B", "M4_gs_slope", "M4_r2", "M4_mae", "M4_rmse")] |> dplyr::filter(!is.na(M4_g0)), caption = "Fitted parameters and performance of approach 4")
 ```
 
 
+**Approach 5**
+
+```{r, echo=FALSE}
+knitr::kable(df_res[,c("Site","Species_accepted", "M5_g0", "M5_g1", "M5_gs_P50_B", "M5_gs_slope", "M5_r2", "M5_mae", "M5_rmse")] |> dplyr::filter(!is.na(M5_g0)), caption = "Fitted parameters and performance of approach 5")
+```
 
 #### Detailed results by data set
 

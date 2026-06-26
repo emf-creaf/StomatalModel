@@ -123,30 +123,37 @@ df_res <- data.frame(Site = site_vec,
                 M2_g0 = NA,
                 M3_g0 = NA,
                 M4_g0 = NA,
+                M5_g0 = NA,
                 M1_g1 = NA,
                 M2_g1 = NA,
                 M3_g1 = NA,
                 M4_g1 = NA,
-                M1_gs_P50 = NA,
-                M2_gs_P50 = NA,
-                M3_gs_P50 = NA,
-                M4_gs_P50 = NA,
+                M5_g1 = NA,
+                M1_gs_P50_B = NA,
+                M2_gs_P50_B = NA,
+                M3_gs_P50_B = NA,
+                M4_gs_P50_B = NA,
+                M5_gs_P50_B = NA,
                 M1_gs_slope = NA,
                 M2_gs_slope = NA,
                 M3_gs_slope = NA,
                 M4_gs_slope = NA,
+                M5_gs_slope = NA,
                 M1_mae = NA,
                 M2_mae = NA,
                 M3_mae = NA,
                 M4_mae = NA,
+                M5_mae = NA,
                 M1_rmse = NA,
                 M2_rmse = NA,
                 M3_rmse = NA,
                 M4_rmse = NA,
+                M5_rmse = NA,
                 M1_r2 = NA,
                 M2_r2 = NA,
                 M3_r2 = NA,
-                M4_r2 = NA)
+                M4_r2 = NA,
+                M5_r2 = NA)
 
 ## Sigmoid function
 sigmoid <- function(y, P50, slope) {
@@ -155,6 +162,22 @@ sigmoid <- function(y, P50, slope) {
 ## Stomatal conductance function
 gs <- function(x, y, g0, g1, gs_P50, gs_slope) {
   fl <- 1 - 1/(1+exp((gs_slope/25)*(y - gs_P50)))
+  fl*pmax(g0, g0 + g1*x)
+}
+rwc<-function(psiSym, pi0, epsilon) {
+  psi_tl = medfate::moisture_turgorLossPoint(pi0,epsilon)
+  sel <- (psiSym < psi_tl)
+  rwc <- rep(NA, length(psiSym))
+  rwc[sel] = (-abs(pi0))/psiSym[sel]
+  c = abs(pi0)
+  b = psiSym+epsilon - c
+  a = -epsilon
+  rwc[sel] = ((-b[sel])-sqrt((b[sel]^2)-4.0*a*c))/(2.0*a)
+  return(rwc)
+}
+## Stomatal conductance function based on relative water content function
+gs_rwc <- function(x, y, g0, g1, gs_PI0, gs_EPS) {
+  fl <- rwc(y, gs_PI0, gs_EPS)
   fl*pmax(g0, g0 + g1*x)
 }
 ## Slope P50 relationship
@@ -182,7 +205,10 @@ f_opt_g1 <- function(x, xydata, g0, gs_P50, gs_slope) {
   diff <- xydata$gs - gs(xydata$An_Cs, xydata$Pleaf, g0, x[1], gs_P50, gs_slope)
   return(- mean(abs(diff)))
 }
-
+f_opt_g1_PI0_EPS <- function(x, xydata, g0) {
+  diff <- xydata$gs - gs_rwc(xydata$An_Cs, xydata$Pleaf, g0, x[1], x[2], x[3])
+  return(- mean(abs(diff)))
+}
  
 for(index in valid) {
   print(site_sp_vec[index])
@@ -256,12 +282,12 @@ for(index in valid) {
   df_res$M1_mae[index] <- -ga_M1@fitnessValue
   df_res$M1_g0[index] <- df_res$gs_max[index]*0.05 
   df_res$M1_g1[index] <-ga_M1@solution[1,1]
-  df_res$M1_gs_P50[index] <-ga_M1@solution[1,2]
+  df_res$M1_gs_P50_B[index] <-ga_M1@solution[1,2]
   df_res$M1_gs_slope[index] <- ga_M1@solution[1,3]
   xydata$M1_gs_pred <- gs(xydata$An_Cs,xydata$Pleaf, 
                           df_res$M1_g0[index], 
                           df_res$M1_g1[index], 
-                          df_res$M1_gs_P50[index], 
+                          df_res$M1_gs_P50_B[index], 
                           df_res$M1_gs_slope[index])
   df_res$M1_r2[index] <- cor(xydata$gs, xydata$M1_gs_pred, use = "complete.obs")^2
   df_res$M1_rmse[index] <- sqrt(mean((xydata$gs-xydata$M1_gs_pred)^2))
@@ -279,12 +305,12 @@ for(index in valid) {
   df_res$M2_mae[index] <- -ga_M2@fitnessValue
   df_res$M2_g0[index] <- df_res$gs_max[index]*0.05 
   df_res$M2_g1[index] <-ga_M2@solution[1,1]
-  df_res$M2_gs_P50[index] <-ga_M2@solution[1,2]
+  df_res$M2_gs_P50_B[index] <-ga_M2@solution[1,2]
   df_res$M2_gs_slope[index] <- f_slope(ga_M2@solution[1,2])
   xydata$M2_gs_pred <- gs(xydata$An_Cs,xydata$Pleaf, 
                           df_res$M2_g0[index], 
                           df_res$M2_g1[index], 
-                          df_res$M2_gs_P50[index], 
+                          df_res$M2_gs_P50_B[index], 
                           df_res$M2_gs_slope[index])
   df_res$M2_r2[index] <- cor(xydata$gs, xydata$M2_gs_pred, use = "complete.obs")^2
   df_res$M2_rmse[index] <- sqrt(mean((xydata$gs-xydata$M2_gs_pred)^2))
@@ -292,9 +318,9 @@ for(index in valid) {
   
   tlp <- df_res$Ptlp[index]
   P50 <- df_res$VCstem_P50[index]
-  is_m3_m4 <- FALSE
+  is_m3_m4_m5 <- FALSE
   if(!is.na(tlp) || !is.na(P50)) {
-    is_m3_m4 <- TRUE
+    is_m3_m4_m5 <- TRUE
     is_tlp <- !is.na(tlp)
     if(!is_tlp) {
       P_gs88 <- max(-3.5, P50*0.23 - 1.5)
@@ -303,13 +329,14 @@ for(index in valid) {
       P_gs88 <- tlp
       P_gs12 <- tlp/2
     }
-    slope <- (88.0 - 12.0)/(abs(P_gs88) - abs(P_gs12))
+    # slope <- (88.0 - 12.0)/(abs(P_gs88) - abs(P_gs12))
     P_gs50 <- (P_gs88+P_gs12)/2.0
   }
-  if(is_m3_m4) {
+  if(is_m3_m4_m5) {
     ## MODEL 3
     ga_M3 <- ga(type = "real-valued",
-                fitness = f_opt_g1, xydata = xydata, g0 = df_res$gs_max[index]*0.05, gs_P50 = P_gs50, gs_slope = slope,
+                fitness = f_opt_g1, xydata = xydata, g0 = df_res$gs_max[index]*0.05, gs_P50 = P_gs50,
+                gs_slope = f_slope(P_gs50), 
                 popSize = 300,
                 maxiter = 400,
                 lower= c(1, df_res$Pleaf_min[index]),
@@ -317,35 +344,60 @@ for(index in valid) {
                 optim = TRUE, monitor = FALSE)
     df_res$M3_g0[index] <- df_res$gs_max[index]*0.05 
     df_res$M3_g1[index] <-ga_M3@solution[1,1]
-    df_res$M3_gs_P50[index] <- P_gs50
-    df_res$M3_gs_slope[index] <- slope
+    df_res$M3_gs_P50_B[index] <- P_gs50
+    df_res$M3_gs_slope[index] <- f_slope(P_gs50)
     xydata$M3_gs_pred <- gs(xydata$An_Cs,xydata$Pleaf, 
                             df_res$M3_g0[index], 
                             df_res$M3_g1[index], 
-                            df_res$M3_gs_P50[index], 
+                            df_res$M3_gs_P50_B[index], 
                             df_res$M3_gs_slope[index])
     df_res$M3_mae[index] <- mean(abs(xydata$gs-xydata$M3_gs_pred))
     df_res$M3_r2[index] <- cor(xydata$gs, xydata$M3_gs_pred, use = "complete.obs")^2
     df_res$M3_rmse[index] <- sqrt(mean((xydata$gs-xydata$M3_gs_pred)^2))
     
     ## MODEL 4
+    ga_M4 <- ga(type = "real-valued",
+                fitness = f_opt_g1, xydata = xydata, g0 = df_res$gs_max[index]*0.05, gs_P50 = P_gs88,
+                gs_slope = f_slope(P_gs88),
+                popSize = 300,
+                maxiter = 400,
+                lower= c(1, df_res$Pleaf_min[index]),
+                upper = c(30, df_res$Pleaf_max[index]),
+                optim = TRUE, monitor = FALSE)
     df_res$M4_g0[index] <- df_res$gs_max[index]*0.05 
-    df_res$M4_g1[index] <- (df_res$gs_max[index] - df_res$M4_g0[index])/df_res$An_Cs_gs_max[index]
-    df_res$M4_gs_P50[index] <- P_gs50
-    df_res$M4_gs_slope[index] <- slope
+    df_res$M4_g1[index] <-ga_M4@solution[1,1]
+    df_res$M4_gs_P50_B[index] <- P_gs88 
+    df_res$M4_gs_slope[index] <- f_slope(P_gs88)
     xydata$M4_gs_pred <- gs(xydata$An_Cs,xydata$Pleaf, 
                             df_res$M4_g0[index], 
                             df_res$M4_g1[index], 
-                            df_res$M4_gs_P50[index], 
+                            df_res$M4_gs_P50_B[index], 
                             df_res$M4_gs_slope[index])
     df_res$M4_mae[index] <- mean(abs(xydata$gs-xydata$M4_gs_pred))
     df_res$M4_r2[index] <- cor(xydata$gs, xydata$M4_gs_pred, use = "complete.obs")^2
     df_res$M4_rmse[index] <- sqrt(mean((xydata$gs-xydata$M4_gs_pred)^2))
+    
+    ## MODEL 5
+    df_res$M5_g0[index] <- df_res$gs_max[index]*0.05
+    df_res$M5_g1[index] <- (df_res$gs_max[index] - df_res$M5_g0[index])/df_res$An_Cs_gs_max[index]
+    df_res$M5_gs_P50_B[index] <- P_gs88
+    df_res$M5_gs_slope[index] <- f_slope(P_gs88)
+    xydata$M5_gs_pred <- gs(xydata$An_Cs,xydata$Pleaf,
+                            df_res$M5_g0[index],
+                            df_res$M5_g1[index],
+                            df_res$M5_gs_P50_B[index],
+                            df_res$M5_gs_slope[index])
+    df_res$M5_mae[index] <- mean(abs(xydata$gs-xydata$M5_gs_pred))
+    df_res$M5_r2[index] <- cor(xydata$gs, xydata$M5_gs_pred, use = "complete.obs")^2
+    df_res$M5_rmse[index] <- sqrt(mean((xydata$gs-xydata$M5_gs_pred)^2))
   }
+  
+
+  
   print(df_res[index,])
   
   g1 <- ggplot(xydata)+
-    geom_abline(intercept = 0, slope = 1, col = "gray", size = 1.5)+
+    geom_abline(intercept = 0, slope = 1, col = "darkgray", size = 1.5)+
     geom_point(aes(x = gs, y = M1_gs_pred), col = "black", alpha= 0.5)+
     geom_point(aes(x = gs, y = M2_gs_pred), col = "red", alpha= 0.5)+
     geom_text(x =max(xydata$gs)*0.05, y = max(xydata$gs)*0.95,
@@ -361,7 +413,7 @@ for(index in valid) {
               size = 3, col = "red",
               hjust = "left")
     
-  if(is_m3_m4) {
+  if(is_m3_m4_m5) {
     g1 <- g1+
       geom_point(aes(x = gs, y = M3_gs_pred), col = "blue", alpha= 0.5)+
       geom_point(aes(x = gs, y = M4_gs_pred), col = "darkgreen", alpha= 0.5)+
@@ -375,7 +427,13 @@ for(index in valid) {
                 label = paste0("M4 - R2 = ", round(100*df_res$M4_r2[index],1), 
                                "% MAE = ", round(df_res$M4_mae[index],3), 
                                " RMSE = ", round(df_res$M4_rmse[index],3)),
-                size = 3, col = "darkgreen",
+                size = 3, col = "green",
+                hjust = "left")+
+      geom_text(x =max(xydata$gs)*0.05, y = max(xydata$gs)*0.75,
+                label = paste0("M5 - R2 = ", round(100*df_res$M5_r2[index],1), 
+                               "% MAE = ", round(df_res$M5_mae[index],3), 
+                               " RMSE = ", round(df_res$M5_rmse[index],3)),
+                size = 3, col = "orange",
                 hjust = "left")
   }
   g1 <- g1+
@@ -388,29 +446,33 @@ for(index in valid) {
   
   mdata1 <- data.frame(Pleaf = seq(-9, 0, by=0.01)) |>
     dplyr::mutate(M1_gs_pred = max(xydata$gs)*sigmoid(Pleaf, 
-                               df_res$M1_gs_P50[index], df_res$M1_gs_slope[index])) |>
+                               df_res$M1_gs_P50_B[index], df_res$M1_gs_slope[index])) |>
     dplyr::mutate(M2_gs_pred = max(xydata$gs)*sigmoid(Pleaf, 
-                               df_res$M2_gs_P50[index], df_res$M2_gs_slope[index]))
-  if(is_m3_m4) {
+                               df_res$M2_gs_P50_B[index], df_res$M2_gs_slope[index]))
+  if(is_m3_m4_m5) {
     mdata1 <- mdata1 |>
     dplyr::mutate(M3_gs_pred = max(xydata$gs)*sigmoid(Pleaf, 
-                                 df_res$M3_gs_P50[index], df_res$M3_gs_slope[index]))|>
+                                df_res$M3_gs_P50_B[index], df_res$M3_gs_slope[index]))|>
     dplyr::mutate(M4_gs_pred = max(xydata$gs)*sigmoid(Pleaf, 
-                                  df_res$M4_gs_P50[index], df_res$M4_gs_slope[index]))
+                                df_res$M4_gs_P50_B[index], df_res$M4_gs_slope[index]))|>
+    dplyr::mutate(M5_gs_pred = max(xydata$gs)*sigmoid(Pleaf, 
+                                df_res$M5_gs_P50_B[index], df_res$M5_gs_slope[index]))
   }
   
   g2 <- ggplot(xydata)+
     geom_point(aes(x = Pleaf, y = gs, col = An_Cs))+
-    geom_line(aes(x=Pleaf, y=M1_gs_pred), data = mdata1, col = "black")+
-    geom_vline(xintercept = df_res$M1_gs_P50[index], col = "black", size = 1.5, alpha = 0.5)+
-    geom_line(aes(x=Pleaf, y=M2_gs_pred), data = mdata1, col = "red")+
-    geom_vline(xintercept = df_res$M2_gs_P50[index], col = "red", size = 1.5, alpha = 0.5)
-  if(is_m3_m4) {
+    geom_line(aes(x=Pleaf, y=M1_gs_pred), data = mdata1, col = "black", size = 1.2, alpha = 0.8)+
+    geom_vline(xintercept = df_res$M1_gs_P50_B[index], col = "black", size = 1.1, alpha = 0.5)+
+    geom_line(aes(x=Pleaf, y=M2_gs_pred), data = mdata1, col = "red", size = 1.2, alpha = 0.8)+
+    geom_vline(xintercept = df_res$M2_gs_P50_B[index], col = "red", size = 1.1, alpha = 0.5)
+  if(is_m3_m4_m5) {
     g2 <- g2+
-      geom_line(aes(x=Pleaf, y=M3_gs_pred), data = mdata1, col = "blue")+
-      geom_vline(xintercept = df_res$M3_gs_P50[index], col = "blue", size = 1.5, alpha = 0.5)+
-      geom_line(aes(x=Pleaf, y=M4_gs_pred), data = mdata1, col = "darkgreen")+
-      geom_vline(xintercept = df_res$M4_gs_P50[index], col = "darkgreen", size = 1.5, alpha = 0.5)
+      geom_line(aes(x=Pleaf, y=M3_gs_pred), data = mdata1, col = "blue", size = 1.2, alpha = 0.8)+
+      geom_vline(xintercept = df_res$M3_gs_P50_B[index], col = "blue", size = 1.1, alpha = 0.5)+
+      geom_line(aes(x=Pleaf, y=M4_gs_pred), data = mdata1, col = "green", size = 1.2, alpha = 0.8)+
+      geom_vline(xintercept = df_res$M4_gs_P50_B[index], col = "green", size = 1.1, alpha = 0.5)+
+      geom_line(aes(x=Pleaf, y=M5_gs_pred), data = mdata1, col = "orange", size = 1.2, alpha = 0.8)+
+      geom_vline(xintercept = df_res$M5_gs_P50_B[index], col = "orange", size = 1.1, alpha = 0.5)
   }
   fact <- 100/max(xydata$gs)
   g2 <- g2+
@@ -421,9 +483,9 @@ for(index in valid) {
   if(!is.na(df_res$VCstem_P50[index]) && !is.na(df_res$VCstem_slope[index])) {
     mdata1$PLC <- sigmoid(mdata1$Pleaf, df_res$VCstem_P50[index], df_res$VCstem_slope[index])*max(xydata$gs)
     g2 <- g2 +
-      geom_line(aes(x=Pleaf, y=PLC), data = mdata1, col ="gray")+
+      geom_line(aes(x=Pleaf, y=PLC), data = mdata1, col ="darkgray", size = 1.2, alpha = 0.8)+
       scale_x_continuous(limits = c(df_res$VCstem_P50[index]-1.0,0))+
-      geom_vline(xintercept = df_res$VCstem_P50[index], col = "gray", size = 1.5, alpha = 0.5)
+      geom_vline(xintercept = df_res$VCstem_P50[index], col = "darkgray", size = 1.1, alpha = 0.5)
   }
   g2 <- g2 +
     theme_bw()+
@@ -434,27 +496,31 @@ for(index in valid) {
                        An_Cs = seq(0, max(xydata$An_Cs), by=0.001)) |>
     dplyr::mutate(M1_gs_pred = gs(An_Cs, Pleaf, 
                                   df_res$M1_g0[index], df_res$M1_g1[index], 
-                                  df_res$M1_gs_P50[index], df_res$M1_gs_slope[index])) |>
+                                  df_res$M1_gs_P50_B[index], df_res$M1_gs_slope[index])) |>
     dplyr::mutate(M2_gs_pred = gs(An_Cs, Pleaf, 
                                   df_res$M2_g0[index], df_res$M2_g1[index], 
-                                  df_res$M2_gs_P50[index], df_res$M2_gs_slope[index]))
-  if(is_m3_m4) {
+                                  df_res$M2_gs_P50_B[index], df_res$M2_gs_slope[index]))
+  if(is_m3_m4_m5) {
     mdata2 <- mdata2 |>
       dplyr::mutate(M3_gs_pred = gs(An_Cs, Pleaf, 
                                     df_res$M3_g0[index], df_res$M3_g1[index], 
-                                    df_res$M3_gs_P50[index], df_res$M3_gs_slope[index])) |>
+                                    df_res$M3_gs_P50_B[index], df_res$M3_gs_slope[index])) |>
       dplyr::mutate(M4_gs_pred = gs(An_Cs, Pleaf, 
                                     df_res$M4_g0[index], df_res$M4_g1[index], 
-                                    df_res$M4_gs_P50[index], df_res$M4_gs_slope[index]))
+                                    df_res$M4_gs_P50_B[index], df_res$M4_gs_slope[index])) |>
+      dplyr::mutate(M5_gs_pred = gs(An_Cs, Pleaf, 
+                                    df_res$M5_g0[index], df_res$M5_g1[index], 
+                                    df_res$M5_gs_P50_B[index], df_res$M5_gs_slope[index]))
   }
   g3<- ggplot(xydata)+
     geom_point(aes(x = An_Cs, y = gs, col = Pleaf))+
-    geom_line(aes(x=An_Cs, y=M1_gs_pred), data = mdata2, col="black") +
-    geom_line(aes(x=An_Cs, y=M2_gs_pred), data = mdata2, col="red")
-  if(is_m3_m4) {
+    geom_line(aes(x=An_Cs, y=M1_gs_pred), data = mdata2, col="black", size = 1.2, alpha = 0.8) +
+    geom_line(aes(x=An_Cs, y=M2_gs_pred), data = mdata2, col="red", size = 1.2, alpha = 0.8)
+  if(is_m3_m4_m5) {
     g3 <- g3 +
-      geom_line(aes(x=An_Cs, y=M3_gs_pred), data = mdata2, col="blue")+
-      geom_line(aes(x=An_Cs, y=M4_gs_pred), data = mdata2, col="darkgreen")
+      geom_line(aes(x=An_Cs, y=M3_gs_pred), data = mdata2, col="blue", size = 1.2, alpha = 0.8)+
+      geom_line(aes(x=An_Cs, y=M4_gs_pred), data = mdata2, col="green", size = 1.2, alpha = 0.8)+
+      geom_line(aes(x=An_Cs, y=M5_gs_pred), data = mdata2, col="orange", size = 1.2, alpha = 0.8)
   }
   g3 <- g3+
     xlab("An/Cs")+
